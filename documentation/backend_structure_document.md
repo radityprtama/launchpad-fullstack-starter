@@ -1,179 +1,317 @@
 # Backend Structure Document
 
-This document outlines the backend architecture, hosting, and infrastructure for the **codeguide-starter** project. It uses plain language so anyone can understand how the backend is set up and how it supports the application.
+This document outlines the backend setup for the **LaunchPad** Boilerplate-as-a-Service platform. It explains how the system is built, how data is managed, where it lives, how it’s secured, and how all the pieces work together.
+
+---
 
 ## 1. Backend Architecture
 
-- **Framework and Design Pattern**
-  - We use **Next.js API Routes** to handle all server-side logic. These routes live alongside the frontend code in the same repository, making development and deployment simpler.
-  - The backend follows a **layered pattern**:
-    1. **API Layer**: Receives requests (login, registration, data fetch).  
-    2. **Service Layer**: Contains the core business logic (user validation, password hashing).  
-    3. **Data Access Layer**: Talks to the database via a simple ORM (e.g., Prisma or TypeORM).
+**Overall Design**
+- We use **Next.js App Router** as a unified framework for both frontend pages and backend APIs. This means marketing pages, dashboards, and server-side logic live under the same codebase.  
+- **API Routes** are file-based under `/app/api`. Each route handles one area of functionality (e.g., templates, teams, generation jobs).  
+- **Better Auth** provides user registration, login, session management, and supports freemium, Pro, and Team models out of the box.  
+- **Drizzle ORM** sits between our code and the PostgreSQL database, giving us a type-safe way to define and query tables.  
+- We add a separate **worker service** (in its own container) for long-running tasks like project generation, connected via a job queue.
 
-- **Scalability**
-  - Stateless API routes can scale horizontally—new instances can spin up on demand.  
-  - We can add caching or a message queue (e.g., Redis or RabbitMQ) without changing the core code.
+**Key Patterns & Benefits**
+- **Separation of Concerns**: UI components (`/components`), API logic (`/app/api`), database schemas (`/db`), and workers (`/workers` or `/services`) are all in clear folders.
+- **Type Safety**: Using TypeScript end-to-end (Next.js + Drizzle ORM + client code) catches many errors at compile time.
+- **Scalability**: You can spin up many API server instances, scale the database, and add more worker containers as load grows.
+- **Maintainability**: Modular code and shared types mean new features (e.g., billing, new API routes) slot in smoothly.
+- **Performance**: Lightweight API routes, optimized data fetching, and caching (Redis) keep response times low.
 
-- **Maintainability**
-  - Code for each feature is grouped by route (authentication, dashboard).  
-  - A service layer separates complex logic from request handling.
-
-- **Performance**
-  - Lightweight Node.js handlers keep response times low.  
-  - Future use of database connection pooling and Redis for caching repeated queries.
+---
 
 ## 2. Database Management
 
-- **Database Choice**
-  - We recommend **PostgreSQL** for structured data and reliable transactions.  
-  - In-memory caching can be added later with **Redis** for session tokens or frequently read data.
+**Technology Choice**
+- **PostgreSQL** (Relational SQL database) for reliable, ACID-compliant storage.  
+- **Drizzle ORM** to define tables and queries in TypeScript, ensuring the shape of data stays consistent.  
 
-- **Data Storage and Access**
-  - Use an ORM like **Prisma** or **TypeORM** to map JavaScript/TypeScript objects to database tables.
-  - Connection pooling ensures efficient use of database connections under load.
-  - Migrations track schema changes over time, keeping development, staging, and production in sync.
+**Data Structure & Storage**
+- Tables cover users, teams, templates, subscriptions, and generation jobs.  
+- Drizzle handles migrations and schema definitions under `/db/schema`.  
+- Data is accessed via Drizzle’s query builder, which returns typed results and prevents SQL injection.
 
-- **Data Practices**
-  - Passwords are never stored in plain text—they are salted and hashed with **bcrypt** before saving.
-  - All outgoing data is typed and validated to prevent malformed records.
+**Data Management Practices**
+- **Migrations**: Versioned scripts track schema changes.  
+- **Backups**: Regular snapshots of the Postgres database.  
+- **Connection Pooling**: Ensures efficient reuse of database connections under heavy load.
+
+---
 
 ## 3. Database Schema
 
-### Human-Readable Format
+Below is a human-readable overview of our main tables and their key fields.  
 
-- **Users**
-  - **id**: Unique identifier  
-  - **email**: User’s email address (unique)  
-  - **password_hash**: Securely hashed password  
-  - **created_at**: Account creation timestamp
+Users
+- id (UUID)  
+- email (text, unique)  
+- hashed_password (text)  
+- role (enum: Free, Pro, Team Owner, Team Member)  
+- created_at, updated_at (timestamps)
 
-- **Sessions**
-  - **id**: Unique session record  
-  - **user_id**: Links to a user  
-  - **token**: Random string for authentication  
-  - **expires_at**: When the token stops working  
-  - **created_at**: When the session was created
+Teams
+- id (UUID)  
+- name (text)  
+- owner_id (references users.id)  
+- created_at, updated_at (timestamps)
 
-- **DashboardItems** *(optional for dynamic data)*
-  - **id**: Unique record  
-  - **title**: Item title  
-  - **content**: Item details  
-  - **created_at**: When the item was added
+Team_Memberships
+- id (UUID)  
+- team_id (references teams.id)  
+- user_id (references users.id)  
+- role (enum: Member, Admin)  
+- joined_at (timestamp)
 
-### SQL Schema (PostgreSQL)
+Templates
+- id (UUID)  
+- name (text)  
+- definition (JSON) – file structure, variables, settings  
+- version (integer)  
+- owner_id (references users.id)  
+- created_at, updated_at (timestamps)
+
+Subscriptions
+- id (UUID)  
+- user_id (references users.id)  
+- plan (enum: Free, Pro, Team)  
+- stripe_customer_id (text)  
+- stripe_subscription_id (text)  
+- status (enum: active, past_due, canceled)  
+- start_date, end_date (timestamps)
+
+Generation_Jobs
+- id (UUID)  
+- user_id (references users.id)  
+- template_id (references templates.id)  
+- status (enum: pending, processing, completed, failed)  
+- log (JSON) – progress updates, error messages  
+- created_at, updated_at (timestamps)
+
+---
+
+**SQL Schema (PostgreSQL)**
 ```sql
 -- Users table
 CREATE TABLE users (
-  id SERIAL PRIMARY KEY,
-  email VARCHAR(255) UNIQUE NOT NULL,
-  password_hash VARCHAR(255) NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now()
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT UNIQUE NOT NULL,
+  hashed_password TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('Free', 'Pro', 'Team Owner', 'Team Member')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Sessions table
-CREATE TABLE sessions (
-  id SERIAL PRIMARY KEY,
-  user_id INT REFERENCES users(id) ON DELETE CASCADE,
-  token VARCHAR(255) UNIQUE NOT NULL,
-  expires_at TIMESTAMPTZ NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now()
+-- Teams
+CREATE TABLE teams (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  owner_id UUID REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Dashboard items table
-CREATE TABLE dashboard_items (
-  id SERIAL PRIMARY KEY,
-  title TEXT NOT NULL,
-  content TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
+-- Team Memberships
+CREATE TABLE team_memberships (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id UUID REFERENCES teams(id),
+  user_id UUID REFERENCES users(id),
+  role TEXT NOT NULL CHECK (role IN ('Member', 'Admin')),
+  joined_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Templates
+CREATE TABLE templates (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  definition JSONB NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1,
+  owner_id UUID REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Subscriptions
+CREATE TABLE subscriptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id),
+  plan TEXT NOT NULL CHECK (plan IN ('Free', 'Pro', 'Team')),
+  stripe_customer_id TEXT,
+  stripe_subscription_id TEXT,
+  status TEXT NOT NULL CHECK (status IN ('active','past_due','canceled')),
+  start_date TIMESTAMPTZ,
+  end_date TIMESTAMPTZ
+);
+
+-- Generation Jobs
+CREATE TABLE generation_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id),
+  template_id UUID REFERENCES templates(id),
+  status TEXT NOT NULL CHECK (status IN ('pending','processing','completed','failed')),
+  log JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```  
 
+---
+
 ## 4. API Design and Endpoints
 
-- **Approach**: We follow a **RESTful** style, grouping related endpoints under `/api` directories.
+We follow a **RESTful** style using Next.js API Routes. Each route folder maps to a URL path under `/api`.
 
-- **Key Endpoints**
-  - `POST /api/auth/register`  
-    • Accepts `{ email, password }`  
-    • Creates a new user and issues a session token  
-  - `POST /api/auth/login`  
-    • Accepts `{ email, password }`  
-    • Verifies credentials and returns a session token  
-  - `POST /api/auth/logout`  
-    • Invalidates the session token on the server  
-  - `GET /api/dashboard/data`  
-    • Requires a valid session  
-    • Returns user-specific data or dashboard items  
+**Authentication**
+- `POST /api/auth/signup` – register new user.  
+- `POST /api/auth/login` – user login, returns session cookie.  
+- `POST /api/auth/logout` – clear user session.
 
-- **Communication**
-  - Frontend sends JSON requests; backend replies with JSON and appropriate HTTP status codes.  
-  - Protected routes check for a valid session token (in cookies or Authorization header).
+**Templates**
+- `GET /api/templates` – list all templates accessible by the user (personal, team).  
+- `POST /api/templates` – create a new template.  
+- `GET /api/templates/{id}` – fetch a single template’s data.  
+- `PUT /api/templates/{id}` – update a template’s definition.  
+- `DELETE /api/templates/{id}` – remove a template.
+
+**Generation**
+- `POST /api/generate` – enqueue a generation job (requires template ID and project variables).  
+- `GET /api/generate/{jobId}` – check status and logs of a job.
+
+**Teams & Membership**
+- `GET /api/teams` – list teams user belongs to.  
+- `POST /api/teams` – create a new team.  
+- `POST /api/teams/{id}/invite` – add a member to a team.  
+- `DELETE /api/teams/{id}/members/{userId}` – remove member.
+
+**Billing & Subscriptions**
+- `GET /api/subscriptions` – current user subscription details.  
+- `POST /api/subscriptions/checkout` – create Stripe checkout session.  
+- `POST /api/webhooks/stripe` – receive events from Stripe.
+
+Each endpoint validates input with **Zod** schemas and checks user permissions via middleware.  
+
+---
 
 ## 5. Hosting Solutions
 
-- **Cloud Provider**:  
-  - **Vercel** (recommended) offers seamless Next.js deployments, auto-scaling, and built-in CDN.  
-  - Alternatively, **Netlify** or any Node.js-capable host will work.
+**Application Servers**
+- Hosted on a cloud provider (e.g., AWS ECS, Google Cloud Run, or Vercel).  
+- Docker containers ensure consistent runtime (Node.js + Next.js).  
+- Auto-scaling based on CPU/requests.
 
-- **Benefits**
-  - **Reliability**: Global servers and failover across regions.  
-  - **Scalability**: Auto-scale serverless functions based on traffic.  
-  - **Cost-Effectiveness**: Pay-per-use model means low cost for small projects.
+**Database**
+- Managed PostgreSQL service (Amazon RDS, Azure Database, or Google Cloud SQL).  
+- Automatic backups, multi-zone replicas for high availability.
+
+**Worker Service**
+- Deployed as a separate Docker container.  
+- Reads jobs from Redis and runs the generation logic.  
+- Can scale independently from the API servers.
+
+**Local Development**
+- `docker-compose.yml` spins up API, Postgres, Redis, and worker containers locally.
+
+---
 
 ## 6. Infrastructure Components
 
-- **Load Balancer**
-  - Provided by the hosting platform—distributes API requests across function instances.
+**Load Balancer**
+- Distributes traffic across multiple API server instances.  
 
-- **CDN (Content Delivery Network)**
-  - Vercel’s global edge network caches static assets (CSS, JS, images) for faster page loads.
+**Caching & Queue**
+- **Redis** serves two roles:  
+  • Caching frequently accessed data (e.g., templates list)  
+  • Backing BullMQ job queue for generation tasks
 
-- **Caching**
-  - **Redis** (optional) for session storage or caching dashboard queries to reduce database load.
+**CDN**
+- Static assets (JS, CSS, images) served via a CDN (e.g., Vercel edge network or Cloudflare) to accelerate global delivery.
 
-- **Object Storage**
-  - For file uploads or backups, integrate with AWS S3 or similar services.
+**Background Worker**
+- Uses **BullMQ** connected to Redis.  
+- Processes generation jobs, communicates status back to Postgres, and notifies users via in-app events or email.
 
-- **Message Queue**
-  - In future, use **RabbitMQ** or **Kafka** for background tasks (e.g., email notifications).
+**Container Orchestration**
+- Docker Compose locally, and Kubernetes/ECS in production if needed.
+
+---
 
 ## 7. Security Measures
 
-- **Authentication & Authorization**
-  - Passwords hashed with **bcrypt** and salted.  
-  - Session tokens stored in secure, HttpOnly cookies or Authorization headers.  
-  - Protected endpoints verify tokens before proceeding.
+**Authentication & Authorization**
+- **Better Auth** handles secure password storage, session cookies, and CSRF protection.  
+- Role-based access: Free, Pro, Team Owner, Team Member determine permitted actions.
 
-- **Data Encryption**
-  - **HTTPS/TLS** encrypts data in transit.  
-  - Database connections use SSL to encrypt data between the app and the database.
+**OAuth Integration**
+- GitHub (or GitLab) OAuth via `next-auth` or a similar library.  
+- Secure storage of access tokens in the database (encrypted at rest).
 
-- **Input Validation**
-  - Every incoming request is validated (e.g., valid email format, password length) to prevent SQL injection or other attacks.
+**Data Encryption**
+- TLS (HTTPS) enforced for all traffic.  
+- Database encryption at rest via managed service.
 
-- **Web Security Best Practices**
-  - Enable **CORS** policies to limit allowed origins.  
-  - Use **CSRF tokens** or same-site cookies to prevent cross-site requests.  
-  - Set secure headers with **Helmet** or a similar middleware.
+**Input Validation & Sanitization**
+- **Zod** schemas validate all incoming requests.  
+- Prevents malformed data and injection attacks.
+
+**Secrets Management**
+- Environment variables stored securely (AWS Secrets Manager, GCP Secret Manager, or Vercel Environment Settings).  
+- No credentials checked into code.
+
+**Error Handling & Logging**
+- Central middleware captures errors and sends structured logs to a log service (e.g., ELK, Datadog).  
+- Worker failures are retried and reported.
+
+**Compliance**
+- GDPR-friendly data practices: users can request data exports/deletions.  
+- Stripe PCI compliance for billing.
+
+---
 
 ## 8. Monitoring and Maintenance
 
-- **Performance Monitoring**
-  - Integrate **Sentry** or **LogRocket** for real-time crash reporting and performance tracing.  
-  - Use Vercel’s built-in analytics to track request latencies and error rates.
+**Monitoring Tools**
+- **APM** (Datadog, New Relic, or Prometheus + Grafana) to track server response times and errors.  
+- **Redis & Postgres** metrics for memory, connections, and CPU.
 
-- **Logging**
-  - Structured logs (JSON) for all API requests and errors, shipped to a log management service like **Datadog** or **Logflare**.
+**Logging**
+- **Pino** or **Winston** logs structured JSON to a centralized service.  
+- Worker logs include job-level details for debugging.
 
-- **Health Checks**
-  - Define a `/health` endpoint that returns a 200 status if the service is up and the database is reachable.
+**Health Checks**
+- API health endpoints (`/api/health`) polled by load balancer.  
+- Worker liveness/readiness probes.
 
-- **Maintenance Strategies**
-  - Automated migrations run on deploy to keep the database schema up to date.  
-  - Scheduled dependency audits and security scans (e.g., `npm audit`).
-  - Regular backups of the database (daily or weekly depending on usage).
+**Maintenance Strategy**
+- **CI/CD Pipelines**: automated builds, tests (unit, integration, end-to-end), and deployments.  
+- **Database Migrations**: run as part of deployment, with rollback support.  
+- **Dependency Updates**: scheduled checks for vulnerable packages (Dependabot).  
+- **Backups & Disaster Recovery**: daily DB backups, periodic restore drills.
+
+---
 
 ## 9. Conclusion and Overall Backend Summary
 
-The backend for **codeguide-starter** is built on Next.js API Routes and Node.js, paired with PostgreSQL for data and optional Redis for caching. It follows a clear layered architecture that keeps code easy to maintain and extend. With RESTful endpoints for authentication and data, secure practices like password hashing and HTTPS, and hosting on Vercel for scalability and global performance, this setup meets the project’s goals for a fast, secure, and developer-friendly foundation. Future enhancements—such as background job queues, advanced monitoring, or richer data models—can be added without disrupting the core structure.
+LaunchPad’s backend is built on a **modern, unified** Next.js framework that handles both UI and server logic in one place. We use:
+
+- Bullet list of core tech:
+  • Next.js App Router & TypeScript  
+  • Better Auth for user management  
+  • PostgreSQL with Drizzle ORM  
+  • Docker + Docker Compose for containers  
+  • Redis + BullMQ for background jobs  
+  • Zod for input validation  
+  • Stripe for billing & subscriptions
+
+This setup ensures:
+- **Scalability**: independent scaling of web servers, database, and workers.  
+- **Maintainability**: clear folder structure, shared types, and modular code.  
+- **Performance**: CDN, caching, optimized API routes.  
+- **Security**: encrypted data, role-based access, validated inputs, and secure secrets handling.
+
+**Unique Aspects**
+- A single Next.js codebase for marketing, dashboard, and API simplifies development.  
+- Type-safe ORM and end-to-end TypeScript dramatically reduce runtime errors.  
+- Containerized background workers make long-running jobs safe and isolated.
+
+With this backend structure in place, building core LaunchPad features—like the Visual Template Builder, project generation, and team workflows—becomes a matter of extending well-defined pieces, not reinventing foundational plumbing.
