@@ -1,90 +1,168 @@
-# Tech Stack Document
+# Tech Stack Document for LaunchPad
 
-This document explains the key technologies chosen for the **codeguide-starter** project. It’s written in everyday language so anyone—technical or not—can understand why each tool was picked and how it supports the application.
+This document explains, in everyday language, the technology choices behind the **LaunchPad** Boilerplate-as-a-Service platform. It shows how each piece fits together and why we picked it, so anyone can understand how the product works under the hood.
+
+---
 
 ## 1. Frontend Technologies
-The frontend is everything the user sees and interacts with. For this project, we’ve used:
+
+Our goal on the frontend is to build a fast, interactive, and consistent user experience for the LaunchPad dashboard and marketing pages. Here’s what we chose:
 
 - **Next.js (App Router)**
-  - A React framework that makes page routing, server-side rendering, and API routes very simple.
-  - Enhances user experience by pre-rendering pages on the server or at build time, leading to faster initial load.
-- **React 18**
-  - The underlying library for building user interfaces with reusable components.
-  - Provides a smooth, interactive experience thanks to its virtual DOM and modern hooks.
-- **TypeScript**
-  - A superset of JavaScript that adds types (labels for data).
-  - Helps catch errors early during development and makes the code easier to maintain.
-- **CSS (globals.css & theme.css)**
-  - **globals.css** applies base styles (fonts, colors, resets) across the entire app.
-  - **dashboard/theme.css** defines the look and feel specific to the dashboard area.
-  - This separation keeps styles organized and avoids accidental style conflicts.
+  - A single framework for both pages and APIs.
+  - Lets us share code and data types between the user interface and backend logic.
+  - Simplifies routing for the marketing site, dashboard, and API calls.
 
-By combining these tools, we have a clear structure (Next.js folders for pages and layouts), safer code (TypeScript), and flexible styling with vanilla CSS.
+- **TypeScript**
+  - Adds type safety to JavaScript.
+  - Catches errors early during development, making the code more reliable.
+
+- **shadcn/ui**
+  - A library of ready-made, accessible UI components (buttons, dialogs, tables).
+  - Speeds up building complex interfaces like the Visual Template Builder.
+  - Ensures a consistent look and feel across the entire app.
+
+- **Tailwind CSS (v4)**
+  - Utility-first styling library for rapid, consistent design.
+  - Lets developers write small, reusable style classes directly in markup.
+
+How this helps users:
+
+- Fast page loads and smooth navigation.
+- A polished, responsive dashboard that adapts to all devices.
+- A professional interface built without reinventing design work.
+
+---
 
 ## 2. Backend Technologies
-The backend handles data, user accounts, and the logic behind the scenes. Our choices here are:
 
-- **Next.js API Routes**
-  - Allows us to write server-side code (`route.ts` files) alongside our frontend in the same project.
-  - Runs on Node.js, so we can handle requests like sign-up, sign-in, and data fetching in one place.
-- **Node.js Runtime**
-  - The JavaScript environment on the server that executes our API routes.
-- **bcrypt** (npm package)
-  - A library for hashing passwords securely before storing them.
-  - Ensures that even if someone got access to our data, raw passwords aren’t visible.
-- **(Optional) NextAuth.js or JWT**
-  - While this starter kit shows a custom authentication flow, it can easily integrate services like NextAuth.js for email-based login or JWT (JSON Web Tokens) for stateless sessions.
+Behind the scenes, we need a robust system to manage users, store data, and power features like project generation.
 
-These components work together to receive user credentials, verify or store them securely, manage sessions or tokens, and deliver protected data back to the frontend.
+- **Node.js & Next.js API Routes**
+  - Runs our server code using the same framework as frontend.
+  - Defines endpoints (e.g., `/api/templates`, `/api/generate`) to handle data requests.
+
+- **Better Auth**
+  - Complete user authentication and session management (sign-up, sign-in, roles).
+  - Built-in support for freemium, Pro, and Team accounts.
+
+- **PostgreSQL**
+  - A reliable, open-source relational database.
+  - Stores users, teams, templates, subscriptions, and job status.
+
+- **Drizzle ORM**
+  - A type-safe way to interact with PostgreSQL.
+  - Ensures database queries and schema changes match our TypeScript types.
+
+- **BullMQ & Redis** (for background jobs)
+  - Handles long-running tasks like code generation and GitHub pushes.
+  - Queues jobs so they don’t block real-time API responses.
+
+How this helps users:
+
+- Secure user accounts with flexible subscription controls.
+- Reliable storage of templates and generation jobs.
+- Fast responses for simple requests, with heavy work done in the background.
+
+---
 
 ## 3. Infrastructure and Deployment
-Infrastructure covers where and how we host the app, as well as how changes get delivered:
+
+We’ve built a streamlined process to develop, test, and deploy LaunchPad with minimal friction.
+
+- **Docker & Docker Compose**
+  - Containerizes the application, database, and worker services.
+  - Guarantees the same setup in development, testing, and production.
 
 - **Git & GitHub**
-  - Version control system (Git) and remote hosting (GitHub) keep track of all code changes and allow team collaboration.
-- **Vercel (or Netlify)**
-  - A popular hosting service optimized for Next.js, with one-click deployments and global content delivery.
-  - Automatically rebuilds and deploys the site whenever code is pushed to the main branch.
-- **GitHub Actions (CI/CD)**
-  - Automates tasks like linting (ESLint), formatting (Prettier), and running any tests you add.
-  - Ensures that only clean, tested code goes live.
+  - Version control for tracking code changes.
+  - Collaboration through pull requests and code reviews.
 
-Together, these tools provide a reliable, scalable setup where every code change is tested and deployed quickly, with minimal manual work.
+- **CI/CD with GitHub Actions**
+  - Automatically tests and builds code on every commit.
+  - Deploys to hosting platforms when changes are approved.
+
+- **Hosting Platforms (e.g., Vercel or AWS)**
+  - Hosts the frontend and API routes for global performance.
+  - Can scale up as the user base grows.
+
+How this helps users:
+
+- Highly available service with minimal downtime.
+- Quick updates and bug fixes rolled out automatically.
+- Predictable environment that reduces “it works on my machine” issues.
+
+---
 
 ## 4. Third-Party Integrations
-While this starter kit is minimal by design, it already includes or can easily add:
 
-- **bcrypt**
-  - For secure password hashing (included as an npm dependency).
-- **NextAuth.js** (optional)
-  - A full-featured authentication library supporting email/password, OAuth, and more.
-- **Sentry or LogRocket** (optional)
-  - For real-time error tracking and performance monitoring in production.
+Leveraging external services speeds up development and adds powerful features.
 
-These integrations help extend the app’s capabilities without building every feature from scratch.
+- **Stripe**
+  - Manages Free, Pro, and Team subscriptions and billing.
+  - Handles payment processing securely.
+
+- **GitHub OAuth / next-auth**
+  - Allows users to connect their GitHub accounts.
+  - Enables the “Push to Repo” feature for generated projects.
+
+- **Analytics Tools (e.g., Google Analytics or PostHog)**
+  - Tracks user behavior and feature usage.
+  - Helps us make data-driven improvements.
+
+How this helps users:
+
+- Secure, PCI-compliant billing and subscription management.
+- One-click integration with users’ GitHub accounts.
+- Insights into how LaunchPad is used, leading to better features.
+
+---
 
 ## 5. Security and Performance Considerations
-We’ve baked in several measures to keep users safe and the app running smoothly:
 
-Security:
-- Passwords are never stored in plain text—bcrypt hashes them with a random salt.
-- API routes can implement CSRF protection and input validation to block malicious requests.
-- Session tokens or cookies are marked secure and HttpOnly to prevent theft via JavaScript.
+Security and speed are top priorities to ensure users trust and enjoy the service.
 
-Performance:
-- Server-side rendering (SSR) and static site generation (SSG) in Next.js deliver pages faster.
-- Code splitting and lazy-loaded components ensure users only download what they need.
-- Global CSS and theme files are small and cached by the browser for quick repeat visits.
+Security Measures:
+- **Authentication & Authorization**
+  - Better Auth handles secure sign-up, login, and session tokens.
+  - Role-based access control for freemium vs. paid features.
 
-These strategies work together to give users a fast, secure experience every time.
+- **Data Validation with Zod**
+  - Validates all inputs on the server to prevent malformed or malicious data.
+
+- **Encrypted Connections**
+  - Enforces HTTPS for all traffic.
+  - Secure storage of user credentials and OAuth tokens.
+
+Performance Optimizations:
+- **Code Splitting & Caching**
+  - Next.js automatically splits JavaScript by page for faster loads.
+  - HTTP caching headers speed up repeat visits.
+
+- **Background Processing**
+  - Heavy tasks run in worker containers, keeping the UI responsive.
+
+- **Connection Pooling**
+  - Drizzle and PostgreSQL use pooled database connections to handle many users efficiently.
+
+How this helps users:
+
+- Smooth, uninterrupted experience even under load.
+- Confidence that their data and payment details are secure.
+- Fast initial loads and real-time feedback on actions.
+
+---
 
 ## 6. Conclusion and Overall Tech Stack Summary
-In building **codeguide-starter**, we chose technologies that:
 
-- Align with modern web standards (Next.js, React, TypeScript).
-- Provide a clear, file-based project structure for rapid onboarding.
-- Offer built-in support for server-side rendering, API routes, and static assets.
-- Emphasize security through password hashing, session management, and safe defaults.
-- Enable easy scaling and future enhancements via modular code and optional integrations.
+The LaunchPad stack combines the best modern tools to deliver a fast, reliable, and secure Boilerplate-as-a-Service platform:
 
-This stack strikes a balance between simplicity for newcomers and flexibility for experienced teams. It accelerates development of a secure authentication flow and a polished dashboard, while leaving room to plug in databases, test suites, and advanced features as the project grows.
+- Frontend: **Next.js**, **TypeScript**, **shadcn/ui**, **Tailwind CSS**
+- Backend: **Next.js API Routes**, **Node.js**, **Better Auth**, **PostgreSQL**, **Drizzle ORM**, **BullMQ** + **Redis**
+- Infrastructure: **Docker**/**Docker Compose**, **GitHub**, **GitHub Actions**, **Vercel/AWS**
+- Integrations: **Stripe**, **GitHub OAuth / next-auth**, **Analytics Tools**
+- Security & Performance: **Zod validation**, **HTTPS**, **background workers**, **caching and code splitting**
+
+Why these choices? They give us a single, unified framework (Next.js with TypeScript) that covers both frontend and backend, a type-safe database layer, out-of-the-box authentication, and a component library for a professional UI. Docker and CI/CD ensure reliable deployments, while third-party services like Stripe and GitHub OAuth add essential features without reinventing the wheel. 
+
+Together, this stack accelerates development, ensures maintainability, and provides a seamless experience for end users building and managing their code templates with LaunchPad.
