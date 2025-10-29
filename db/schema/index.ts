@@ -6,14 +6,10 @@ export * from "./projects";
 
 // Export all types for easier importing
 export type {
-  User,
-  Session,
-  Account,
-  Verification,
-  NewUser,
-  NewSession,
-  NewAccount,
-  NewVerification,
+  user as User,
+  session as Session,
+  account as Account,
+  verification as Verification,
 } from "./auth";
 
 export type {

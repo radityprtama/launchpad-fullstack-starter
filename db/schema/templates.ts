@@ -118,8 +118,7 @@ export const template = pgTable("template", {
   // Soft delete index
   deletedAtIdx: index("idx_template_deleted_at").on(table.deletedAt),
 
-  // GIN index for array types (PostgreSQL specific)
-  tagsIdx: index("idx_template_tags").using("gin", table.tags),
+
 }));
 
 // Template stars table (for bookmarking/favoriting)

@@ -24,7 +24,7 @@ export const outputFormatEnum = pgEnum("output_format", [
 export interface GenerationConfig {
   templateId: string;
   templateVersion?: string;
-  variables: Record<string, any>;
+  variables: Record<string, unknown>;
   outputFormat: "download" | "github" | "gitlab";
   repositoryConfig?: {
     name: string;
@@ -38,7 +38,7 @@ export interface JobProgress {
   stage: string;
   progress: number; // 0-100
   message?: string;
-  details?: any;
+  details?: unknown;
 }
 
 // Projects table - tracks project generation attempts
